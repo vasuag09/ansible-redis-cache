@@ -117,7 +117,8 @@ firewall, and kernel tuning all actually took effect.
 
 See `PROJECT_REPORT.md` for the full write-up (architecture, design
 rationale, and verification evidence) — that's the document to walk your
-faculty through.
+faculty through. See `DEMO.md` for the exact steps to get this running on
+a teammate's machine for a live demo.
 
 ## Notes for grading / write-up
 
