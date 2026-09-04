@@ -1,0 +1,9 @@
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      systemd systemd-sysv python3 sudo iproute2 iptables ufw dbus \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /etc/systemd/system /lib/systemd/system -name "*.wants" -type d | xargs -r rm -rf
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]
