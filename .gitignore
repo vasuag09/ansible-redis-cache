@@ -1,0 +1,6 @@
+*.retry
+.vault_pass
+
+# Local editor/agent tooling state, not project source
+.claude/
+.code-graph/

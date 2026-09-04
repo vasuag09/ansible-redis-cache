@@ -1,0 +1,36 @@
+---
+# Non-secret Redis configuration. The password lives in group_vars/all/vault.yml
+# (encrypted with ansible-vault) — see README.md to create it.
+
+redis_port: 6379
+
+# Redis listens on loopback (for local clients) and the VM's own private
+# network address (so other hosts on the same network can reach it — auth
+# via redis_password is still required either way).
+redis_bind_addresses: "127.0.0.1 {{ ansible_default_ipv4.address }}"
+
+redis_protected_mode: "yes"
+
+# Persistence: RDB point-in-time snapshots. AOF left off per project scope.
+redis_appendonly: "no"
+redis_save_points:
+  - "900 1"
+  - "300 10"
+  - "60 10000"
+
+redis_maxmemory: "256mb"
+redis_maxmemory_policy: "allkeys-lru"
+
+redis_log_level: "notice"
+
+# Kernel-level tuning recommended by Redis upstream (avoids fork() latency
+# spikes under memory pressure and THP-induced latency jitter).
+redis_tune_kernel: true
+
+# --- Firewall (ufw) ---
+redis_configure_firewall: true
+
+# Safe default: nothing external can reach Redis until you change this.
+# Set to the actual CIDR/IP of whatever app server needs to talk to this
+# cache, e.g. "10.0.1.0/24" or "10.0.1.15/32".
+redis_allowed_cidr: "127.0.0.1/32"

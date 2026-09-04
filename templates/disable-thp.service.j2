@@ -1,0 +1,14 @@
+# Managed by Ansible. Disables Transparent Huge Pages at boot — THP is
+# known to cause latency spikes and fork() slowdowns in Redis (upstream
+# recommendation: https://redis.io/docs/management/optimization/latency/).
+[Unit]
+Description=Disable Transparent Huge Pages (THP) for Redis
+Before=redis-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

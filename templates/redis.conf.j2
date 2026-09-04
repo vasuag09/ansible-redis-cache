@@ -1,0 +1,29 @@
+# Managed by Ansible — do not edit by hand, changes will be overwritten.
+# Source: templates/redis.conf.j2
+
+bind {{ redis_bind_addresses }}
+protected-mode {{ redis_protected_mode }}
+port {{ redis_port }}
+
+supervised systemd
+pidfile /run/redis/redis-server.pid
+loglevel {{ redis_log_level }}
+logfile /var/log/redis/redis-server.log
+dir /var/lib/redis
+
+requirepass "{{ redis_password }}"
+
+# Persistence (RDB snapshots)
+{% for point in redis_save_points %}
+save {{ point }}
+{% endfor %}
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+
+appendonly {{ redis_appendonly }}
+
+# Memory management
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}

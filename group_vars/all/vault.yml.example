@@ -1,0 +1,12 @@
+# DO NOT commit a real vault.yml with the placeholder below left in plaintext.
+# This .example file just documents the expected shape.
+#
+# Create the real, encrypted file with:
+#   ansible-vault create group_vars/all/vault.yml
+# then put a single line inside:
+#   redis_password: "<a long random password>"
+#
+# Generate a strong password:
+#   openssl rand -base64 24
+
+redis_password: "CHANGE_ME"

@@ -1,0 +1,139 @@
+---
+- name: Set up and harden Redis cache on Ubuntu
+  hosts: redis_servers
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Assert target is a supported Ubuntu release
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == "Ubuntu"
+          - ansible_facts['distribution_major_version'] | int >= 20
+        fail_msg: >-
+          This playbook targets Ubuntu 20.04+. Detected:
+          {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+        success_msg: "Target OS confirmed: Ubuntu {{ ansible_facts['distribution_version'] }}"
+
+    - name: Assert redis_password has been set (see group_vars/all/vault.yml)
+      ansible.builtin.assert:
+        that:
+          - redis_password is defined
+          - redis_password | length >= 8
+          - redis_password != "CHANGE_ME"
+        fail_msg: >-
+          redis_password is missing or still a placeholder. Create
+          group_vars/all/vault.yml (ansible-vault create group_vars/all/vault.yml)
+          with a real redis_password value — see README.md.
+
+  handlers:
+    - name: Restart redis
+      ansible.builtin.systemd:
+        name: redis-server
+        state: restarted
+
+  tasks:
+    - name: Install Redis and firewall packages
+      ansible.builtin.apt:
+        name:
+          - redis-server
+          - ufw
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Deploy Redis configuration
+      ansible.builtin.template:
+        src: templates/redis.conf.j2
+        dest: /etc/redis/redis.conf
+        owner: redis
+        group: redis
+        mode: "0640"
+      notify: Restart redis
+
+    - name: Ensure Redis is enabled and running
+      ansible.builtin.systemd:
+        name: redis-server
+        enabled: true
+        state: started
+
+    # --- Kernel tuning (Redis upstream recommendations) ---
+    - name: Persist vm.overcommit_memory=1
+      ansible.builtin.template:
+        src: templates/99-redis.conf.j2
+        dest: /etc/sysctl.d/99-redis.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: redis_tune_kernel
+      register: sysctl_dropin
+
+    - name: Apply sysctl settings immediately
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-redis.conf
+      when: redis_tune_kernel and sysctl_dropin.changed
+      changed_when: true
+
+    - name: Install service to disable Transparent Huge Pages at boot
+      ansible.builtin.template:
+        src: templates/disable-thp.service.j2
+        dest: /etc/systemd/system/disable-thp.service
+        owner: root
+        group: root
+        mode: "0644"
+      when: redis_tune_kernel
+      register: thp_unit
+
+    - name: Enable and start the THP-disable service
+      ansible.builtin.systemd:
+        name: disable-thp.service
+        enabled: true
+        state: started
+        daemon_reload: "{{ thp_unit.changed }}"
+      when: redis_tune_kernel
+
+    # --- Firewall ---
+    - name: Allow SSH through ufw (avoid locking out remote management)
+      # Allow by port number rather than the "OpenSSH" app profile: that
+      # profile is only registered when openssh-server's own package files
+      # are present, which isn't guaranteed on every image/minimal install.
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+      when: redis_configure_firewall
+
+    - name: Allow Redis port only from the configured source
+      community.general.ufw:
+        rule: allow
+        port: "{{ redis_port | string }}"
+        proto: tcp
+        src: "{{ redis_allowed_cidr }}"
+      when: redis_configure_firewall
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+        policy: deny
+      when: redis_configure_firewall
+
+    # --- Verification ---
+    - name: Wait for Redis to accept TCP connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ redis_port }}"
+        timeout: 15
+
+    - name: Verify Redis responds to PING with auth
+      ansible.builtin.command: redis-cli -h 127.0.0.1 -p {{ redis_port }} ping
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
+      register: redis_ping
+      changed_when: false
+      no_log: true
+
+    - name: Assert Redis authenticated successfully
+      ansible.builtin.assert:
+        that:
+          - "'PONG' in redis_ping.stdout"
+        fail_msg: "Redis did not respond PONG — check requirepass and service status."
+        success_msg: "Redis is up and authenticating correctly."
